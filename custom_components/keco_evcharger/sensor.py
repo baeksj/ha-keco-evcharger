@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any, Callable
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
@@ -17,8 +18,14 @@ from .coordinator import KecoCoordinator
 def _parse_ts(v: str | None) -> datetime | None:
     if not v:
         return None
+    raw = str(v).strip()
+    if not raw or raw in {"0", "00000000000000"}:
+        return None
     try:
-        return datetime.strptime(v, "%Y%m%d%H%M%S")
+        # KECO timestamp payload is local Korea time (YYYYmmddHHMMSS).
+        # Home Assistant timestamp sensors need timezone-aware datetime.
+        dt = datetime.strptime(raw, "%Y%m%d%H%M%S")
+        return dt.replace(tzinfo=ZoneInfo("Asia/Seoul"))
     except ValueError:
         return None
 
