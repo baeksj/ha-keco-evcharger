@@ -10,17 +10,18 @@
       },
       "search_station": {
         "title": "충전소 검색",
-        "description": "도시를 선택하고 키워드를 입력해 조회하세요. Reset 체크 후 제출하면 검색 입력/결과가 초기화됩니다.",
+        "description": "도시를 선택하고 키워드를 입력해 조회하세요.",
         "data": {
           "zcode": "도시",
-          "query": "키워드",
-          "reset": "Reset (입력/결과 초기화)"
+          "query": "키워드"
         }
       },
       "pick_station": {
         "title": "충전소 선택",
+        "description": "결과에 원하는 항목이 없으면 Reset을 체크하고 확인해 검색 조건을 초기화하세요.",
         "data": {
-          "station": "검색 결과"
+          "station": "검색 결과",
+          "reset": "Reset (검색 결과 초기화)"
         }
       }
     },

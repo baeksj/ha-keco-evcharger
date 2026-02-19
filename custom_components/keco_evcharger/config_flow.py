@@ -74,18 +74,6 @@ class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            if user_input.get("reset", False):
-                self._search_results = []
-                self._search_zcode = "11"
-                schema = vol.Schema(
-                    {
-                        vol.Required("zcode", default="11"): vol.In(ZCODE_OPTIONS),
-                        vol.Required("query", default=""): str,
-                        vol.Optional("reset", default=False): bool,
-                    }
-                )
-                return self.async_show_form(step_id="search_station", data_schema=schema)
-
             query = user_input["query"].strip()
             zcode = str(user_input.get("zcode", "11"))
             self._search_zcode = zcode
@@ -104,13 +92,17 @@ class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Required("zcode", default=self._search_zcode): vol.In(ZCODE_OPTIONS),
                 vol.Required("query", default=""): str,
-                vol.Optional("reset", default=False): bool,
             }
         )
         return self.async_show_form(step_id="search_station", data_schema=schema, errors=errors)
 
     async def async_step_pick_station(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
+            if user_input.get("reset", False):
+                self._search_results = []
+                self._search_zcode = "11"
+                return await self.async_step_search_station()
+
             idx = int(user_input["station"])
             picked = self._search_results[idx]
             stat_id = picked.get(CONF_STAT_ID, "")
@@ -135,7 +127,12 @@ class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             str(i): f"{s.get(CONF_STAT_NM,'')} | {s.get(CONF_ADDR,'')} | {s.get(CONF_BUSI_NM,'')} | {s.get(CONF_STAT_ID,'')}"
             for i, s in enumerate(self._search_results)
         }
-        schema = vol.Schema({vol.Required("station"): vol.In(options)})
+        schema = vol.Schema(
+            {
+                vol.Required("station"): vol.In(options),
+                vol.Optional("reset", default=False): bool,
+            }
+        )
         return self.async_show_form(step_id="pick_station", data_schema=schema)
 
     @staticmethod
