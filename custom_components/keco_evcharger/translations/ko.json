@@ -10,9 +10,11 @@
       },
       "search_station": {
         "title": "충전소 검색",
-        "description": "충전소명/주소/운영사/충전소ID로 검색합니다.",
+        "description": "도시를 선택하고 키워드를 입력해 조회하세요. Reset 체크 후 제출하면 검색 입력/결과가 초기화됩니다.",
         "data": {
-          "query": "검색어"
+          "zcode": "도시",
+          "query": "키워드",
+          "reset": "Reset (입력/결과 초기화)"
         }
       },
       "pick_station": {

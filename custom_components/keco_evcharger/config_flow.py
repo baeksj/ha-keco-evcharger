@@ -19,6 +19,26 @@ from .const import (
     DOMAIN,
 )
 
+ZCODE_OPTIONS = {
+    "11": "서울",
+    "26": "부산",
+    "27": "대구",
+    "28": "인천",
+    "29": "광주",
+    "30": "대전",
+    "31": "울산",
+    "36": "세종",
+    "41": "경기",
+    "42": "강원",
+    "43": "충북",
+    "44": "충남",
+    "45": "전북",
+    "46": "전남",
+    "47": "경북",
+    "48": "경남",
+    "50": "제주",
+}
+
 
 class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 2
@@ -26,6 +46,7 @@ class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._api_key: str = ""
         self._search_results: list[dict[str, Any]] = []
+        self._search_zcode: str = "11"
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -53,10 +74,24 @@ class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            if user_input.get("reset", False):
+                self._search_results = []
+                self._search_zcode = "11"
+                schema = vol.Schema(
+                    {
+                        vol.Required("zcode", default="11"): vol.In(ZCODE_OPTIONS),
+                        vol.Required("query", default=""): str,
+                        vol.Optional("reset", default=False): bool,
+                    }
+                )
+                return self.async_show_form(step_id="search_station", data_schema=schema)
+
             query = user_input["query"].strip()
+            zcode = str(user_input.get("zcode", "11"))
+            self._search_zcode = zcode
             client = KecoApiClient(self._api_key)
             try:
-                self._search_results = await client.search_stations(query)
+                self._search_results = await client.search_stations(query, zcode=zcode)
             except Exception:  # noqa: BLE001
                 errors["base"] = "cannot_connect"
             else:
@@ -65,7 +100,13 @@ class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 else:
                     return await self.async_step_pick_station()
 
-        schema = vol.Schema({vol.Required("query"): str})
+        schema = vol.Schema(
+            {
+                vol.Required("zcode", default=self._search_zcode): vol.In(ZCODE_OPTIONS),
+                vol.Required("query", default=""): str,
+                vol.Optional("reset", default=False): bool,
+            }
+        )
         return self.async_show_form(step_id="search_station", data_schema=schema, errors=errors)
 
     async def async_step_pick_station(self, user_input: dict[str, Any] | None = None) -> FlowResult:
