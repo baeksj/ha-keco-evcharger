@@ -36,6 +36,9 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
         )
         self.client = client
         self.station = station
+        # Keep last known charger rows to avoid transient `unavailable`
+        # when upstream API temporarily omits one charger in a station response.
+        self._last_rows_by_chger_id: dict[str, dict[str, Any]] = {}
 
     @classmethod
     def from_entry(cls, hass: HomeAssistant, entry, client: KecoApiClient):
@@ -65,7 +68,25 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
             stat_id = self.station.get(CONF_STAT_ID, "")
             if not stat_id:
                 return {}
+
             rows = await self.client.get_station_chargers(stat_id)
-            return {stat_id: rows}
+
+            # Refresh last-known cache from latest payload.
+            seen: set[str] = set()
+            for row in rows:
+                chger_id = str(row.get("chgerId", "")).strip()
+                if not chger_id:
+                    continue
+                seen.add(chger_id)
+                self._last_rows_by_chger_id[chger_id] = row
+
+            # If a charger is temporarily missing in this poll, keep last known row.
+            merged: list[dict[str, Any]] = list(rows)
+            for chger_id, cached in self._last_rows_by_chger_id.items():
+                if chger_id in seen:
+                    continue
+                merged.append(cached)
+
+            return {stat_id: merged}
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(str(err)) from err
