@@ -9,7 +9,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import KecoApiClient
-from .const import CONF_STATIONS, DEFAULT_UPDATE_INTERVAL
+from .const import (
+    CONF_ADDR,
+    CONF_BUSI_NM,
+    CONF_STAT_ID,
+    CONF_STAT_NM,
+    DEFAULT_UPDATE_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +25,7 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
         self,
         hass: HomeAssistant,
         client: KecoApiClient,
-        stations: list[dict[str, str]],
+        station: dict[str, str],
         update_interval: int = DEFAULT_UPDATE_INTERVAL,
     ) -> None:
         super().__init__(
@@ -29,22 +35,37 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
             update_interval=timedelta(seconds=update_interval),
         )
         self.client = client
-        self.stations = stations
+        self.station = station
 
     @classmethod
     def from_entry(cls, hass: HomeAssistant, entry, client: KecoApiClient):
-        options = entry.options or {}
-        stations = options.get(CONF_STATIONS, [])
-        return cls(hass, client, stations, DEFAULT_UPDATE_INTERVAL)
+        # backward compatibility for early single-entry/stations[] prototype
+        stat_id = entry.data.get(CONF_STAT_ID)
+        if not stat_id:
+            stations = (entry.options or {}).get("stations", [])
+            first = stations[0] if stations else {}
+            station = {
+                CONF_STAT_ID: first.get(CONF_STAT_ID, ""),
+                CONF_STAT_NM: first.get(CONF_STAT_NM, ""),
+                CONF_ADDR: first.get(CONF_ADDR, ""),
+                CONF_BUSI_NM: first.get(CONF_BUSI_NM, ""),
+            }
+        else:
+            station = {
+                CONF_STAT_ID: entry.data.get(CONF_STAT_ID, ""),
+                CONF_STAT_NM: entry.data.get(CONF_STAT_NM, ""),
+                CONF_ADDR: entry.data.get(CONF_ADDR, ""),
+                CONF_BUSI_NM: entry.data.get(CONF_BUSI_NM, ""),
+            }
+
+        return cls(hass, client, station, DEFAULT_UPDATE_INTERVAL)
 
     async def _async_update_data(self) -> dict[str, list[dict[str, Any]]]:
         try:
-            data: dict[str, list[dict[str, Any]]] = {}
-            for st in self.stations:
-                stat_id = st.get("statId", "")
-                if not stat_id:
-                    continue
-                data[stat_id] = await self.client.get_station_chargers(stat_id)
-            return data
+            stat_id = self.station.get(CONF_STAT_ID, "")
+            if not stat_id:
+                return {}
+            rows = await self.client.get_station_chargers(stat_id)
+            return {stat_id: rows}
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(str(err)) from err

@@ -1,7 +1,7 @@
 {
   "domain": "keco_evcharger",
   "name": "KECO EV Charger",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "documentation": "https://www.data.go.kr/data/15076352/openapi.do",
   "issue_tracker": "https://github.com/baeksj/keco-evcharger/issues",
   "codeowners": ["@baeksj"],

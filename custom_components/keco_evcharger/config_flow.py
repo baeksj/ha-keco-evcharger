@@ -9,14 +9,31 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
 
 from .api import KecoApiClient
-from .const import CONF_API_KEY, CONF_STATIONS, DOMAIN
+from .const import (
+    CONF_API_KEY,
+    CONF_ENABLED_CHARGERS,
+    CONF_STAT_ID,
+    CONF_STAT_NM,
+    CONF_ADDR,
+    CONF_BUSI_NM,
+    DOMAIN,
+)
 
 
 class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 1
+    VERSION = 2
+
+    def __init__(self) -> None:
+        self._api_key: str = ""
+        self._search_results: list[dict[str, Any]] = []
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
+
+        existing = self._async_current_entries()
+        if existing:
+            self._api_key = existing[0].data.get(CONF_API_KEY, "")
+            return await self.async_step_search_station()
 
         if user_input is not None:
             api_key = user_input[CONF_API_KEY].strip()
@@ -26,16 +43,59 @@ class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:  # noqa: BLE001
                 errors["base"] = "cannot_connect"
             else:
-                await self.async_set_unique_id("keco_evcharger")
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title="KECO EV Charger",
-                    data={CONF_API_KEY: api_key},
-                    options={CONF_STATIONS: []},
-                )
+                self._api_key = api_key
+                return await self.async_step_search_station()
 
         schema = vol.Schema({vol.Required(CONF_API_KEY): str})
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_search_station(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            query = user_input["query"].strip()
+            client = KecoApiClient(self._api_key)
+            try:
+                self._search_results = await client.search_stations(query)
+            except Exception:  # noqa: BLE001
+                errors["base"] = "cannot_connect"
+            else:
+                if not self._search_results:
+                    errors["base"] = "no_results"
+                else:
+                    return await self.async_step_pick_station()
+
+        schema = vol.Schema({vol.Required("query"): str})
+        return self.async_show_form(step_id="search_station", data_schema=schema, errors=errors)
+
+    async def async_step_pick_station(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        if user_input is not None:
+            idx = int(user_input["station"])
+            picked = self._search_results[idx]
+            stat_id = picked.get(CONF_STAT_ID, "")
+
+            await self.async_set_unique_id(stat_id)
+            self._abort_if_unique_id_configured()
+
+            title = f"{picked.get(CONF_STAT_NM, stat_id)} ({stat_id})"
+            return self.async_create_entry(
+                title=title,
+                data={
+                    CONF_API_KEY: self._api_key,
+                    CONF_STAT_ID: stat_id,
+                    CONF_STAT_NM: picked.get(CONF_STAT_NM, ""),
+                    CONF_ADDR: picked.get(CONF_ADDR, ""),
+                    CONF_BUSI_NM: picked.get(CONF_BUSI_NM, ""),
+                },
+                options={CONF_ENABLED_CHARGERS: []},
+            )
+
+        options = {
+            str(i): f"{s.get(CONF_STAT_NM,'')} | {s.get(CONF_ADDR,'')} | {s.get(CONF_BUSI_NM,'')} | {s.get(CONF_STAT_ID,'')}"
+            for i, s in enumerate(self._search_results)
+        }
+        schema = vol.Schema({vol.Required("station"): vol.In(options)})
+        return self.async_show_form(step_id="pick_station", data_schema=schema)
 
     @staticmethod
     @callback
@@ -47,56 +107,35 @@ class KecoOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         self.entry = entry
         self.client = KecoApiClient(entry.data[CONF_API_KEY])
-        self._search_results: list[dict[str, Any]] = []
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        return self.async_show_menu(
-            step_id="init",
-            menu_options=["add_station", "remove_station"],
-        )
-
-    async def async_step_add_station(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
-        if user_input is not None:
-            query = user_input["query"].strip()
-            self._search_results = await self.client.search_stations(query)
-            if not self._search_results:
-                errors["base"] = "no_results"
-            else:
-                return await self.async_step_pick_station()
+        stat_id = self.entry.data.get(CONF_STAT_ID, "")
 
-        schema = vol.Schema({vol.Required("query"): str})
-        return self.async_show_form(step_id="add_station", data_schema=schema, errors=errors)
+        try:
+            chargers = await self.client.get_station_chargers(stat_id)
+        except Exception:  # noqa: BLE001
+            return self.async_show_form(step_id="init", data_schema=vol.Schema({}), errors={"base": "cannot_connect"})
 
-    async def async_step_pick_station(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        if user_input is not None:
-            idx = int(user_input["station"])
-            picked = self._search_results[idx]
-
-            current = list(self.entry.options.get(CONF_STATIONS, []))
-            exists = any(s.get("statId") == picked.get("statId") for s in current)
-            if not exists:
-                current.append(picked)
-
-            return self.async_create_entry(title="", data={**self.entry.options, CONF_STATIONS: current})
-
-        options = {
-            str(i): f"{s.get('statNm','')} | {s.get('addr','')} | {s.get('busiNm','')} | {s.get('statId','')}"
-            for i, s in enumerate(self._search_results)
-        }
-        schema = vol.Schema({vol.Required("station"): vol.In(options)})
-        return self.async_show_form(step_id="pick_station", data_schema=schema)
-
-    async def async_step_remove_station(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        stations = list(self.entry.options.get(CONF_STATIONS, []))
-        if not stations:
-            return self.async_create_entry(title="", data={**self.entry.options})
+        ids = sorted({str(c.get("chgerId", "")).strip() for c in chargers if str(c.get("chgerId", "")).strip()})
+        options = {cid: f"충전기 {cid}" for cid in ids}
 
         if user_input is not None:
-            selected_ids = set(user_input.get("station_ids", []))
-            next_stations = [s for s in stations if s.get("statId") not in selected_ids]
-            return self.async_create_entry(title="", data={**self.entry.options, CONF_STATIONS: next_stations})
+            selected = user_input.get(CONF_ENABLED_CHARGERS, [])
+            return self.async_create_entry(
+                title="",
+                data={
+                    **self.entry.options,
+                    CONF_ENABLED_CHARGERS: selected,
+                },
+            )
 
-        options = {s.get("statId", ""): f"{s.get('statNm','')} ({s.get('statId','')})" for s in stations}
-        schema = vol.Schema({vol.Optional("station_ids", default=[]): cv.multi_select(options)})
-        return self.async_show_form(step_id="remove_station", data_schema=schema)
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_ENABLED_CHARGERS,
+                    default=self.entry.options.get(CONF_ENABLED_CHARGERS, ids),
+                ): cv.multi_select(options)
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

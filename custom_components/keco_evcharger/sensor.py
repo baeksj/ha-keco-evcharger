@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, STAT_TEXT
+from .const import CONF_ENABLED_CHARGERS, CONF_STAT_ID, CONF_STAT_NM, DOMAIN, STAT_TEXT
 from .coordinator import KecoCoordinator
 
 
@@ -88,27 +88,31 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: KecoCoordinator = data["coordinator"]
 
-    entities: list[KecoChargerSensor] = []
-    for st in coordinator.stations:
-        stat_id = st.get("statId", "")
-        station_name = st.get("statNm", stat_id)
+    stat_id = coordinator.station.get(CONF_STAT_ID, "")
+    station_name = coordinator.station.get(CONF_STAT_NM, stat_id)
 
-        for charger in coordinator.data.get(stat_id, []):
-            chger_id = str(charger.get("chgerId", ""))
-            if not chger_id:
-                continue
-            for desc in SENSOR_TYPES:
-                entities.append(
-                    KecoChargerSensor(
-                        coordinator=coordinator,
-                        entry_id=entry.entry_id,
-                        station=st,
-                        station_name=station_name,
-                        stat_id=stat_id,
-                        chger_id=chger_id,
-                        description=desc,
-                    )
+    selected = entry.options.get(CONF_ENABLED_CHARGERS, [])
+    selected_ids = {str(x) for x in selected} if selected else None
+
+    entities: list[KecoChargerSensor] = []
+    for charger in coordinator.data.get(stat_id, []):
+        chger_id = str(charger.get("chgerId", ""))
+        if not chger_id:
+            continue
+        if selected_ids is not None and chger_id not in selected_ids:
+            continue
+
+        for desc in SENSOR_TYPES:
+            entities.append(
+                KecoChargerSensor(
+                    coordinator=coordinator,
+                    entry_id=entry.entry_id,
+                    station_name=station_name,
+                    stat_id=stat_id,
+                    chger_id=chger_id,
+                    description=desc,
                 )
+            )
 
     async_add_entities(entities)
 
@@ -121,7 +125,6 @@ class KecoChargerSensor(CoordinatorEntity[KecoCoordinator], SensorEntity):
         *,
         coordinator: KecoCoordinator,
         entry_id: str,
-        station: dict[str, str],
         station_name: str,
         stat_id: str,
         chger_id: str,
@@ -132,7 +135,6 @@ class KecoChargerSensor(CoordinatorEntity[KecoCoordinator], SensorEntity):
         self._stat_id = stat_id
         self._chger_id = chger_id
         self._station_name = station_name
-        self._station = station
         self._attr_unique_id = f"{entry_id}_{stat_id}_{chger_id}_{description.key}"
         self._attr_name = f"{station_name} {chger_id} {description.name}"
         self._attr_entity_registry_enabled_default = description.enabled_default
@@ -162,10 +164,11 @@ class KecoChargerSensor(CoordinatorEntity[KecoCoordinator], SensorEntity):
 
     @property
     def device_info(self):
+        row = self._charger_row or {}
         return {
             "identifiers": {(DOMAIN, f"{self._stat_id}_{self._chger_id}")},
             "name": f"{self._station_name} #{self._chger_id}",
-            "manufacturer": self._station.get("busiNm") or "공공충전인프라",
+            "manufacturer": row.get("busiNm") or "공공충전인프라",
             "model": "KECO EV Charger",
             "suggested_area": "EV",
         }
