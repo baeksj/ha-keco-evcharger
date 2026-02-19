@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "KECO EV Charger 연결",
+        "description": "공공데이터포털에서 발급한 서비스키(Encoding 또는 Decoding)를 입력하세요.\n\n발급: data.go.kr → '한국환경공단_전기자동차 충전소 정보' → 활용신청 → 인증키 확인",
+        "data": {
+          "api_key": "공공데이터포털 서비스키 (Decoding/일반 인증키 권장)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "API 연결 또는 인증키 확인에 실패했습니다."
+    },
+    "abort": {
+      "already_configured": "이미 설정되어 있습니다."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "KECO EV Charger 설정",
+        "menu_options": {
+          "add_station": "항목 추가(충전소 검색)",
+          "remove_station": "항목 제거"
+        }
+      },
+      "add_station": {
+        "title": "충전소 검색",
+        "description": "충전소명/주소/운영사/충전소ID로 검색됩니다.",
+        "data": {
+          "query": "검색어"
+        }
+      },
+      "pick_station": {
+        "title": "충전소 선택",
+        "data": {
+          "station": "검색 결과"
+        }
+      },
+      "remove_station": {
+        "title": "충전소 제거",
+        "data": {
+          "station_ids": "제거할 항목"
+        }
+      }
+    },
+    "error": {
+      "no_results": "검색 결과가 없습니다."
+    }
+  }
+}
