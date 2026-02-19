@@ -17,6 +17,8 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
 )
 
+MAX_CONSECUTIVE_FAILURES_FOR_UNAVAILABLE = 3
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -39,6 +41,10 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
         # Keep last known charger rows to avoid transient `unavailable`
         # when upstream API temporarily omits one charger in a station response.
         self._last_rows_by_chger_id: dict[str, dict[str, Any]] = {}
+        # API error tolerance:
+        # - failures 1~2: keep previous state (do not mark entities unavailable)
+        # - failure 3+: mark unavailable by raising UpdateFailed
+        self._consecutive_failures = 0
 
     @classmethod
     def from_entry(cls, hass: HomeAssistant, entry, client: KecoApiClient):
@@ -64,12 +70,13 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
         return cls(hass, client, station, DEFAULT_UPDATE_INTERVAL)
 
     async def _async_update_data(self) -> dict[str, list[dict[str, Any]]]:
-        try:
-            stat_id = self.station.get(CONF_STAT_ID, "")
-            if not stat_id:
-                return {}
+        stat_id = self.station.get(CONF_STAT_ID, "")
+        if not stat_id:
+            return {}
 
+        try:
             rows = await self.client.get_station_chargers(stat_id)
+            self._consecutive_failures = 0
 
             # Refresh last-known cache from latest payload.
             seen: set[str] = set()
@@ -88,5 +95,17 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
                 merged.append(cached)
 
             return {stat_id: merged}
+
         except Exception as err:  # noqa: BLE001
+            self._consecutive_failures += 1
+
+            if self._consecutive_failures < MAX_CONSECUTIVE_FAILURES_FOR_UNAVAILABLE:
+                _LOGGER.warning(
+                    "KECO API error (%s/%s). Keeping previous state: %s",
+                    self._consecutive_failures,
+                    MAX_CONSECUTIVE_FAILURES_FOR_UNAVAILABLE,
+                    err,
+                )
+                return self.data or {}
+
             raise UpdateFailed(str(err)) from err
