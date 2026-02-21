@@ -37,9 +37,10 @@
     "step": {
       "init": {
         "title": "충전기 선택",
-        "description": "이 충전소에서 사용할 충전기 ID를 선택하세요.",
+        "description": "이 충전소에서 사용할 충전기 ID와 API 실패 허용 횟수를 설정하세요.",
         "data": {
-          "enabled_chargers": "활성 충전기"
+          "enabled_chargers": "활성 충전기",
+          "max_consecutive_failures": "연속 API 실패 허용 횟수"
         }
       }
     },

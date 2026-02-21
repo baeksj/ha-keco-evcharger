@@ -12,10 +12,12 @@ from .api import KecoApiClient
 from .const import (
     CONF_API_KEY,
     CONF_ENABLED_CHARGERS,
+    CONF_MAX_CONSECUTIVE_FAILURES,
     CONF_STAT_ID,
     CONF_STAT_NM,
     CONF_ADDR,
     CONF_BUSI_NM,
+    DEFAULT_MAX_CONSECUTIVE_FAILURES,
     DOMAIN,
 )
 
@@ -120,7 +122,10 @@ class KecoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_ADDR: picked.get(CONF_ADDR, ""),
                     CONF_BUSI_NM: picked.get(CONF_BUSI_NM, ""),
                 },
-                options={CONF_ENABLED_CHARGERS: []},
+                options={
+                    CONF_ENABLED_CHARGERS: [],
+                    CONF_MAX_CONSECUTIVE_FAILURES: DEFAULT_MAX_CONSECUTIVE_FAILURES,
+                },
             )
 
         options = {
@@ -160,11 +165,13 @@ class KecoOptionsFlow(config_entries.OptionsFlow):
 
         if user_input is not None:
             selected = user_input.get(CONF_ENABLED_CHARGERS, [])
+            max_failures = int(user_input.get(CONF_MAX_CONSECUTIVE_FAILURES, DEFAULT_MAX_CONSECUTIVE_FAILURES))
             return self.async_create_entry(
                 title="",
                 data={
                     **self.entry.options,
                     CONF_ENABLED_CHARGERS: selected,
+                    CONF_MAX_CONSECUTIVE_FAILURES: max(1, min(max_failures, 20)),
                 },
             )
 
@@ -173,7 +180,11 @@ class KecoOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_ENABLED_CHARGERS,
                     default=self.entry.options.get(CONF_ENABLED_CHARGERS, ids),
-                ): cv.multi_select(options)
+                ): cv.multi_select(options),
+                vol.Optional(
+                    CONF_MAX_CONSECUTIVE_FAILURES,
+                    default=int(self.entry.options.get(CONF_MAX_CONSECUTIVE_FAILURES, DEFAULT_MAX_CONSECUTIVE_FAILURES)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=20)),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

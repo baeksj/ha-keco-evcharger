@@ -12,12 +12,12 @@ from .api import KecoApiClient
 from .const import (
     CONF_ADDR,
     CONF_BUSI_NM,
+    CONF_MAX_CONSECUTIVE_FAILURES,
     CONF_STAT_ID,
     CONF_STAT_NM,
+    DEFAULT_MAX_CONSECUTIVE_FAILURES,
     DEFAULT_UPDATE_INTERVAL,
 )
-
-MAX_CONSECUTIVE_FAILURES_FOR_UNAVAILABLE = 3
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
         client: KecoApiClient,
         station: dict[str, str],
         update_interval: int = DEFAULT_UPDATE_INTERVAL,
+        max_consecutive_failures: int = DEFAULT_MAX_CONSECUTIVE_FAILURES,
     ) -> None:
         super().__init__(
             hass,
@@ -38,6 +39,7 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
         )
         self.client = client
         self.station = station
+        self._max_consecutive_failures = max(1, int(max_consecutive_failures))
         # Keep last known charger rows to avoid transient `unavailable`
         # when upstream API temporarily omits one charger in a station response.
         self._last_rows_by_chger_id: dict[str, dict[str, Any]] = {}
@@ -67,7 +69,8 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
                 CONF_BUSI_NM: entry.data.get(CONF_BUSI_NM, ""),
             }
 
-        return cls(hass, client, station, DEFAULT_UPDATE_INTERVAL)
+        max_failures = int((entry.options or {}).get(CONF_MAX_CONSECUTIVE_FAILURES, DEFAULT_MAX_CONSECUTIVE_FAILURES))
+        return cls(hass, client, station, DEFAULT_UPDATE_INTERVAL, max_failures)
 
     async def _async_update_data(self) -> dict[str, list[dict[str, Any]]]:
         stat_id = self.station.get(CONF_STAT_ID, "")
@@ -99,11 +102,11 @@ class KecoCoordinator(DataUpdateCoordinator[dict[str, list[dict[str, Any]]]]):
         except Exception as err:  # noqa: BLE001
             self._consecutive_failures += 1
 
-            if self._consecutive_failures < MAX_CONSECUTIVE_FAILURES_FOR_UNAVAILABLE:
+            if self._consecutive_failures < self._max_consecutive_failures:
                 _LOGGER.warning(
                     "KECO API error (%s/%s). Keeping previous state: %s",
                     self._consecutive_failures,
-                    MAX_CONSECUTIVE_FAILURES_FOR_UNAVAILABLE,
+                    self._max_consecutive_failures,
                     err,
                 )
                 return self.data or {}

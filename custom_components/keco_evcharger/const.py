@@ -9,8 +9,10 @@ CONF_STAT_NM = "statNm"
 CONF_ADDR = "addr"
 CONF_BUSI_NM = "busiNm"
 CONF_ENABLED_CHARGERS = "enabled_chargers"
+CONF_MAX_CONSECUTIVE_FAILURES = "max_consecutive_failures"
 
 DEFAULT_UPDATE_INTERVAL = 300  # 5 min fixed
+DEFAULT_MAX_CONSECUTIVE_FAILURES = 3
 
 API_BASE = "https://apis.data.go.kr/B552584/EvCharger"
 
